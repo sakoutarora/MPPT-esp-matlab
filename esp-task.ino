@@ -1,3 +1,4 @@
+
 #include "freertos/FreeRTOS.h"
 #include <HTTPClient.h>
 #include <WiFi.h>        // Include the Wi-Fi library
@@ -47,76 +48,55 @@ void UARTRx(void *tparam){
   {
     if (Serialport.available())
     {
-      // xSemaphoreTake(mutex, portMAX_DELAY);
-      char ch = Serialport.read();
-      if (ch == '\n')
-      {
-        buffer[counter] = '\0'; 
-      }
-      else
-      {
-        buffer[counter] = ch; 
-      }
-      counter++;
-      if (counter >= len)
-      {
-        counter = 0; 
-      }
-      if ((ch == '\n'))
-      {
-        Serial.print("Buffer :");
-        Serial.println(buffer);
-        counter = 0;
-        // if ( (buffer[0] == 'V'))
+        char ch = Serialport.read();
+        if (ch == '\n'){
+            buffer[counter] = '\0'; 
+        }
+        else{
+            buffer[counter] = ch; 
+        }
+        counter++;
+        if (counter >= len){
+            counter = 0; 
+            vTaskDelay(5 / portTICK_RATE_MS);
+        }
+        if ((ch == '\n'))
         {
-          char* ref = buffer;
-          char *voc = strtok(ref, ",");
-          char *isc = strtok(NULL, ",");
-          if ((voc != NULL ) && (isc != NULL))
-          {
-            if (validvoc(std::atof(voc)) && validisc(std::atof(isc)))
-            {
-              v_oc = std::atof(voc);
-              i_sc = std::atof(isc);
-              updated = 1;
-              Serial.print("VOC UPDATED:");
-              Serial.println(v_oc);
-              Serial.print("ISC UPDATED:");
-              Serial.println(i_sc);
-            }
-          }
-          else
-          {
+            Serial.print("Buffer :");
+            Serial.println(buffer);
             counter = 0;
-            // Serial.println("Garbage . ");
-          }
-          
+            char* ref = buffer;
+            char *voc = strtok(ref, ",");
+            char *isc = strtok(NULL, ",");
+            if ((voc != NULL ) && (isc != NULL))
+            {
+                if (validvoc(std::atof(voc)) && validisc(std::atof(isc)))
+                {
+                v_oc = std::atof(voc);
+                i_sc = std::atof(isc);
+                updated = 1;
+                Serial.print("V UPDATED:");
+                Serial.println(v_oc);
+                Serial.print("I UPDATED:");
+                Serial.println(i_sc);
+                }
+            }
+            vTaskDelay(5 / portTICK_RATE_MS);
+            completeflag = 0;
+            counter = 0;
         }
-        // else
-        {
-          // Serial.println("Garbage string .. ");
-          // Serial.println(buffer);
-          completeflag = 0;
-          counter = 0;
-        }
-      }
-      // xSemaphoreGive(mutex);
     }
-    vTaskDelay(2 / portTICK_RATE_MS);
   }
+
   vTaskDelete(NULL);
 }
 
 void post(void *tparam){
   Serial.println("Inside POST TASK ");
-  // http.begin(serverUrl);                  // Connecting to https endpoint 
-  // http.addHeader("Content-Type", "application/json");
-  // http.addHeader("Content-Length", "65");
 
   http.addHeader("Content-Type", "auto");
   vTaskDelay(100/portTICK_RATE_MS);
   while (1){
-    // xSemaphoreTake(mutex, portMAX_DELAY);
     if (updated)
     {
       http.begin(serverUrl);                  // Connecting to https endpoint 
@@ -140,7 +120,6 @@ void post(void *tparam){
       Serial.println(responseString);
       http.end();
       completeflag = 0;
-      // counter = 0;
       updated = 0;   
       sendcomplete = 1;   
     }
@@ -154,29 +133,10 @@ int isValidDuty(){
   return ((s_duty_cycle >= 0) && (s_duty_cycle <= 100));
 }
 
-void UARTTx(void *tparam){
-  Serial.println("Inside UARTTx TASK");
-  while (1){
-    if (isValidDuty()){
-      duty_cycle = s_duty_cycle;
-      Serialport.print(int(duty_cycle));
-      Serial.print("Duty cycle sent to serial :");
-      Serial.println(duty_cycle);
-    }
-    else{
-      Serial.print("Invalid duty cycle :");
-      Serial.println(duty_cycle);
-    }
-    vTaskDelay(5/ portTICK_RATE_MS);
-  }
-  vTaskDelete(NULL);
-}
 
 void get(void *tparam){
   Serial.println("Inside GET TASK ");
   vTaskDelay(100/portTICK_RATE_MS);
-  // httpget.addHeader("Content-Type", "auto");
-  // Serial.println("After Delay");
   while (1){
     if (sendcomplete)
     {
@@ -189,7 +149,6 @@ void get(void *tparam){
       Serial.print("Response String-GET : ");
       Serial.println(getresponseString);
       httpget.end();
-      s_duty_cycle = int((getresponseString.toFloat())*100);
       sendcomplete = 0;
     }
     
@@ -217,7 +176,6 @@ void setup() {
     Serial.print('.');
   }
 
-  // Serial.println("\n");
   Serial.println("Connection established!");  
   Serial.print("IP address:\t");
   Serial.println(WiFi.localIP());         // Send the IP address of the ESP8266 to the computer
@@ -228,27 +186,12 @@ void setup() {
   delay(100);
   xTaskCreatePinnedToCore(UARTRx, "UARTRx", 1024, NULL, 2, NULL, 0);
   xTaskCreatePinnedToCore(post, "httpreq", 10000, NULL, 1, NULL, 0);
-  // xTaskCreatePinnedToCore(UARTTx, "UARTTx", 1024, NULL, 3, NULL, 1);
   xTaskCreatePinnedToCore(get, "GET", 10000, NULL, 1, NULL, 0);
-  // mutex = xSemaphoreCreateMutex();
   vTaskStartScheduler();
 
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-  // Serial.println("Inside loop");
-  if (isValidDuty()){
-    duty_cycle = s_duty_cycle;
-    int offset = 100;
-    Serialport.println(int(2+offset));
-    // Serial.print("Duty cycle sent to serial :");
-    // Serial.println(duty_cycle);
-  }
-  else{
-    Serial.print("Invalid duty cycle :");
-    Serial.println(duty_cycle);
-  }
+  Serial.print(getresponseString);
   vTaskDelay(50/ portTICK_RATE_MS);
-
 }
